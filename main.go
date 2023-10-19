@@ -2,9 +2,7 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"net/http"
@@ -12,6 +10,11 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/b1994mi/test-deptech/internal/pkg/domain/sqlmodel"
+	"github.com/b1994mi/test-deptech/internal/pkg/domain/sqlrepo"
+	adminHandler "github.com/b1994mi/test-deptech/internal/pkg/handler/admin"
+	adminUsecase "github.com/b1994mi/test-deptech/internal/pkg/usecase/admin"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/joho/godotenv"
@@ -46,38 +49,18 @@ func main() {
 
 	validate := validator.New(validator.WithRequiredStructEnabled())
 
-	r.WithGroup("/user", func(g *bunrouter.Group) {
-		g.POST("", func(w http.ResponseWriter, bunReq bunrouter.Request) error {
-			body, err := io.ReadAll(bunReq.Body)
-			if err != nil {
-				return err
-			}
+	r.WithGroup("/admin", func(g *bunrouter.Group) {
+		ah := adminHandler.NewHandler(
+			validate,
+			adminUsecase.NewUsecase(
+				sqlrepo.NewAdminRepo(db),
+			),
+		)
 
-			var a Admin
-
-			err = json.Unmarshal(body, &a)
-			if err != nil {
-				return err
-			}
-
-			err = validate.Struct(&a)
-			if err != nil {
-				return err
-			}
-
-			err = db.Create(&a).Error
-			if err != nil {
-				return err
-			}
-
-			bunrouter.JSON(w, bunrouter.H{
-				"a": a,
-			})
-			return nil
-		})
+		g.POST("", ah.Create)
 
 		g.GET("", func(w http.ResponseWriter, bunReq bunrouter.Request) error {
-			data := []*Admin{}
+			data := []*sqlmodel.Admin{}
 			err := db.Find(&data).Error
 			if err != nil {
 				return err
@@ -92,7 +75,7 @@ func main() {
 		g.GET("/:id", func(w http.ResponseWriter, bunReq bunrouter.Request) error {
 			id := bunReq.Param("id")
 
-			m := Admin{}
+			m := sqlmodel.Admin{}
 			err := db.Where(map[string]interface{}{
 				"id": id,
 			}).Take(&m).Error
@@ -107,7 +90,7 @@ func main() {
 		})
 
 		g.PUT("/:id", func(w http.ResponseWriter, bunReq bunrouter.Request) error {
-			a := Admin{}
+			a := sqlmodel.Admin{}
 			err := db.Create(&a).Error
 			if err != nil {
 				return err
@@ -128,7 +111,7 @@ func main() {
 	})
 
 	r.POST("/migrate", func(w http.ResponseWriter, bunReq bunrouter.Request) error {
-		db.AutoMigrate(&Admin{})
+		db.AutoMigrate(&sqlmodel.Admin{})
 		bunrouter.JSON(w, bunrouter.H{
 			"message": "automigrate",
 		})
@@ -170,14 +153,4 @@ func waitExitSignal() os.Signal {
 		syscall.SIGTERM,
 	)
 	return <-ch
-}
-
-type Admin struct {
-	ID          int       `json:"id"`
-	Firstname   string    `validate:"required" json:"firstname"`
-	Lastname    string    `validate:"required" json:"lastname"`
-	Email       string    `validate:"required,email" json:"email"`
-	DateOfBirth time.Time `validate:"required" json:"date_of_birth"`
-	Gender      string    `validate:"oneof=male female prefer_not_to" json:"gender"`
-	Password    string    `validate:"required" json:"password,omitempty"`
 }
