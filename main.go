@@ -13,6 +13,8 @@ import (
 
 	"github.com/joho/godotenv"
 	"github.com/uptrace/bunrouter"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
 func main() {
@@ -27,11 +29,29 @@ func main() {
 		panic(fmt.Errorf("failed to listen to port %v: %v", appPort, err))
 	}
 
+	db, err := gorm.Open(
+		sqlite.Open(
+			os.Getenv("DB_PATH"),
+		),
+		&gorm.Config{},
+	)
+	if err != nil {
+		panic(fmt.Errorf("failed to init db: %v", err))
+	}
+
 	r := bunrouter.New()
 
 	r.GET("/", func(w http.ResponseWriter, bunReq bunrouter.Request) error {
 		bunrouter.JSON(w, bunrouter.H{
 			"message": "pong",
+		})
+		return nil
+	})
+
+	r.POST("/migrate", func(w http.ResponseWriter, bunReq bunrouter.Request) error {
+		db.AutoMigrate(&Admin{})
+		bunrouter.JSON(w, bunrouter.H{
+			"message": "automigrate",
 		})
 		return nil
 	})
@@ -71,4 +91,14 @@ func waitExitSignal() os.Signal {
 		syscall.SIGTERM,
 	)
 	return <-ch
+}
+
+type Admin struct {
+	ID          int       `json:"id"`
+	Firstname   string    `validate:"required" json:"firstname"`
+	Lastname    string    `validate:"required" json:"lastname"`
+	Email       string    `validate:"required,email" json:"email"`
+	DateOfBirth time.Time `validate:"required" json:"date_of_birth"`
+	Gender      string    `validate:"oneof=male female prefer_not_to" json:"gender"`
+	Password    string    `validate:"required" json:"password,omitempty"`
 }
