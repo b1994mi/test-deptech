@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -11,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/go-playground/validator/v10"
 	"github.com/joho/godotenv"
 	"github.com/uptrace/bunrouter"
 	"gorm.io/driver/sqlite"
@@ -40,6 +43,82 @@ func main() {
 	}
 
 	r := bunrouter.New()
+
+	validate := validator.New(validator.WithRequiredStructEnabled())
+
+	r.WithGroup("/user", func(g *bunrouter.Group) {
+		g.POST("", func(w http.ResponseWriter, bunReq bunrouter.Request) error {
+			body, err := io.ReadAll(bunReq.Body)
+			if err != nil {
+				return err
+			}
+
+			var a Admin
+
+			err = json.Unmarshal(body, &a)
+			if err != nil {
+				return err
+			}
+
+			err = validate.Struct(&a)
+			if err != nil {
+				return err
+			}
+
+			err = db.Create(&a).Error
+			if err != nil {
+				return err
+			}
+
+			bunrouter.JSON(w, bunrouter.H{
+				"a": a,
+			})
+			return nil
+		})
+
+		g.GET("", func(w http.ResponseWriter, bunReq bunrouter.Request) error {
+			data := []*Admin{}
+			err := db.Find(&data).Error
+			if err != nil {
+				return err
+			}
+
+			bunrouter.JSON(w, bunrouter.H{
+				"data": data,
+			})
+			return nil
+		})
+
+		g.GET("/:id", func(w http.ResponseWriter, bunReq bunrouter.Request) error {
+			id := bunReq.Param("id")
+
+			m := Admin{}
+			err := db.Where(map[string]interface{}{
+				"id": id,
+			}).Take(&m).Error
+			if err != nil {
+				return err
+			}
+
+			bunrouter.JSON(w, bunrouter.H{
+				"m": m,
+			})
+			return nil
+		})
+
+		g.PUT("/:id", func(w http.ResponseWriter, bunReq bunrouter.Request) error {
+			a := Admin{}
+			err := db.Create(&a).Error
+			if err != nil {
+				return err
+			}
+
+			bunrouter.JSON(w, bunrouter.H{
+				"a": a,
+			})
+			return nil
+		})
+	})
 
 	r.GET("/", func(w http.ResponseWriter, bunReq bunrouter.Request) error {
 		bunrouter.JSON(w, bunrouter.H{
